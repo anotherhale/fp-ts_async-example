@@ -13,8 +13,15 @@ export interface AppConfig {
   };
 }
 
+const defaultConfig: AppConfig = {
+  service: {
+    interface: 'localhost',
+    port: 8080
+  }
+}
+
 function readFileAsyncAsTaskEither(path: string): TaskEither<unknown, string> {
-  return tryCatch(() => fsPromises.readFile(path, 'utf8'), reason => new Error(String(reason)))
+  return tryCatch(() => fsPromises.readFile(path, 'utf8'), e => e)
 }
 
 function readYamlAsTaskEither(content: string): TaskEither<unknown, AppConfig> {
@@ -36,13 +43,13 @@ function printConfig(config: AppConfig): AppConfig {
 async function main(filePath: string): Promise<void> {
   const program: T.Task<void> = pipe(
     getConf(filePath),
-    // This line is not compiling:
+    // The following line is not compiling:
     // Argument of type '<E>(fa: TaskEither<E, AppConfig>) => TaskEither<E, AppConfig>' is not assignable to parameter of type '(a: TaskEither<unknown, AppConfig>) => Either<unknown, Task<any>>'.
     //  Type 'TaskEither<unknown, AppConfig>' is not assignable to type 'Either<unknown, Task<any>>'.
     //  Type 'TaskEither<unknown, AppConfig>' is missing the following properties from type 'Right<Task<any>>': _tag, rightts(2345)
     map(printConfig),
     getOrElse(e => {
-      return T.of(undefined);
+      return T.of(defaultConfig);
     })
   );
 
