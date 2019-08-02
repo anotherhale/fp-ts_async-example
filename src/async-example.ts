@@ -1,10 +1,10 @@
 import { pipe } from 'fp-ts/lib/pipeable'
-import { TaskEither, tryCatch, chain, map, getOrElse } from "fp-ts/lib/TaskEither";
+import { IO } from 'fp-ts/lib/IO'
+import { TaskEither, tryCatch, chain, fold } from "fp-ts/lib/TaskEither";
 import * as T from 'fp-ts/lib/Task';
 import { promises as fsPromises } from 'fs';
 const yamlPromise = require('js-yaml-promise');
 
-// const path = require('path');
 export interface AppConfig {
   service: {
     interface: string
@@ -12,36 +12,32 @@ export interface AppConfig {
   };
 }
 
-function readFileAsyncAsTaskEither(path: string): TaskEither<unknown, string> {
-  return tryCatch(() => fsPromises.readFile(path, 'utf8'), e => e)
+function readFileAsyncAsTaskEither(path: string): TaskEither<Error, string> {
+  return tryCatch(() => fsPromises.readFile(path, 'utf8'), reason => new Error(String(reason)))
 }
 
-function readYamlAsTaskEither(content: string): TaskEither<unknown, AppConfig> {
-  return tryCatch(() => yamlPromise.safeLoad(content), e => e)
+function readYamlAsTaskEither(content: string): TaskEither<Error, AppConfig> {
+  return tryCatch(() => yamlPromise.safeLoad(content), reason => new Error(String(reason)))
 }
 
-function getConf(filePath: string): TaskEither<unknown, AppConfig> {
+function getConf(filePath: string): TaskEither<Error, AppConfig> {
   return pipe(
     readFileAsyncAsTaskEither(filePath),
     chain(readYamlAsTaskEither)
   )
 }
 
-function printConfig(config: AppConfig): AppConfig {
-  console.log("AppConfig is: ", config);
-  return config;
-}
-
 async function main(filePath: string): Promise<void> {
   const program: T.Task<void> = pipe(
     getConf(filePath),
-    map(printConfig),
-    getOrElse(e => {
-      return T.of(undefined);
-    })
+    fold(e=>T.of(log(e)()),c=>T.of(log(c)()))
   );
 
   await program();
 }
 
+const log = (s: unknown): IO<void> => () => console.log(s)
+
+main('./config.yaml')
+main('./invalid-config.yaml')
 main('./app-config.yaml')
