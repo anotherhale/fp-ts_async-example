@@ -1,6 +1,6 @@
 import { pipe } from 'fp-ts/lib/pipeable'
-import { getOrElse, fold as foldE, left, right,Either } from 'fp-ts/lib/Either'
-import { TaskEither, tryCatch, map } from "fp-ts/lib/TaskEither";
+import { getOrElse } from 'fp-ts/lib/Either'
+import { TaskEither, tryCatch, map,chain } from "fp-ts/lib/TaskEither";
 import * as T from 'fp-ts/lib/Task';
 import { promises as fsPromises } from 'fs';
 const yamlPromise = require('js-yaml-promise');
@@ -20,31 +20,14 @@ function readFileAsyncAsTaskEither(path: string): TaskEither<unknown, string> {
 function readYamlAsTaskEither(content: string): TaskEither<unknown, AppConfig> {
     return tryCatch(() => yamlPromise.safeLoad(content), e=>e)
 }
- 
 
-// I am not sure how to work with Tasks in TP-TS
-// below are some experiments trying to get these async dependent tasks to work
-
-// function getConf(filePath:string):TaskEither<Error,AppConfig>{
-//     return pipe(
-//         readFileAsyncAsTaskEither(filePath),
-//         chain(readYamlAsTaskEither)
-//     )
-// }
-function getConf(filePath:string):Either<Error,AppConfig>{
-  return pipe(
-    readFileAsyncAsTaskEither(filePath)()).then(
-          file=>pipe(file,foldE(
-              e=>left(e),
-              r=>right(readYamlAsTaskEither(r)().then(yaml=>
-                  pipe(yaml,foldE(
-                      e=>left(e),
-                      c=>right(c)
-                  ))
-              ).catch(e=>left(e)))
-      )   )
-      ).catch(e=>left(e))
+function getConf(filePath:string):TaskEither<unknown,AppConfig>{
+    return pipe(
+        readFileAsyncAsTaskEither(filePath),
+        chain(readYamlAsTaskEither)
+    )
 }
+
 function printConfig(config: AppConfig): AppConfig {
     console.log("AppConfig is: ", config);
     return config;
