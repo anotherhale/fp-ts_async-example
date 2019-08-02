@@ -1,14 +1,12 @@
 import { pipe } from 'fp-ts/lib/pipeable'
-import { IO } from 'fp-ts/lib/IO'
-
 import { chain } from "fp-ts/lib/Task";
-import { fold as foldE,left,right } from 'fp-ts/lib/Either'
-import { TaskEither, tryCatch } from "fp-ts/lib/TaskEither";
-
+import { getOrElse } from 'fp-ts/lib/Either'
+import { TaskEither, tryCatch, map } from "fp-ts/lib/TaskEither";
+import * as T from 'fp-ts/lib/Task';
 import { promises as fsPromises } from 'fs';
-const yaml = require('js-yaml-promise');
-const path = require('path');
+const yamlPromise = require('js-yaml-promise');
 
+// const path = require('path');
 export interface AppConfig {
     service: {
         interface: string
@@ -16,44 +14,40 @@ export interface AppConfig {
     };
 }
 
-function readFileAsync(path: string): TaskEither<Error, string> {
+function readFileAsyncAsTaskEither(path: string): TaskEither<unknown, string> {
     return tryCatch(() => fsPromises.readFile(path, 'utf8'), reason => new Error(String(reason)))
 }
 
-function readYaml(content: string): TaskEither<Error, AppConfig> {
-    return tryCatch(() => yaml.safeLoad(content), reason => new Error(String(reason)))
+function readYamlAsTaskEither(content: string): TaskEither<unknown, AppConfig> {
+    return tryCatch(() => yamlPromise.safeLoad(content), e=>e)
 }
+ 
 
 // I am not sure how to work with Tasks in TP-TS
 // below are some experiments trying to get these async dependent tasks to work
 
-// https://gcanti.github.io/fp-ts/recipes/async.html#work-with-a-list-of-dependent-tasks
-// Does not compile - result needs to be a string but is a Either<Error,string>. 
-// I have tried to pipe and fold to get the string but it just gets messy and fails to work
-
-// function getConfViaChain(filePath:string){
-//     return pipe(
-//         readFileAsync(filePath),
-//         chain(result=>readYaml(result))
-//     )().then(c=>right(c)).catch(e=>left(e))
-// }
-
-// Compiles but returns a pending promise
-function getConf(filePath:string){
+function getConf(filePath:string):TaskEither<Error,AppConfig>{
     return pipe(
-        readFileAsync(path.resolve(filePath))()).then(
-            file=>pipe(file,foldE(
-                e=>left(e),
-                r=>right(readYaml(r)().then(yaml=>
-                    pipe(yaml,foldE(
-                        e=>left(e),
-                        c=>right(c)
-                    ))
-                ).catch(e=>left(e)))
-        )   )
-        ).catch(e=>left(e))
+        readFileAsyncAsTaskEither(filePath),
+        chain(readYamlAsTaskEither)
+    )
 }
 
-const log = (s: unknown): IO<void> => () => console.log(s)
+function printConfig(config: AppConfig): AppConfig {
+    console.log("AppConfig is: ", config);
+    return config;
+  }
+  
+  async function main(filePath: string): Promise<void> {
+    const program: T.Task<void> = pipe(
+      getConf(filePath),
+      map(printConfig),
+      getOrElse(e => {
+        return T.of(undefined);
+      })
+    );
+  
+    await program;
+  }
 
-getConf('./app-config.yaml').then(c=>log(c)())
+  main('./app-config.yaml')
